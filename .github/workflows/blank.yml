@@ -1,0 +1,729 @@
+import os
+import malcat
+import getpass
+import re
+from datetime import datetime
+
+# Получаем путь к рабочему столу пользователя
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+output_file = os.path.join(desktop_path, "symbols_list.txt")
+
+# Начало скрипта
+print("\n\n### Выгрузка полного списка символов ###")
+
+# Объект analysis.syms содержит все символы файла
+symbols = analysis.syms
+
+# Список для хранения символов
+symbol_list = []
+
+# Перебираем все символы
+for sym in symbols:
+    # Проверяем, есть ли имя у символа
+    name = sym.name if sym.name else "Без имени"
+    symbol_list.append({
+        "name": name,
+        "type": sym.type if sym.type else "Неизвестный тип"
+    })
+
+# Сортируем символы по имени
+symbol_list.sort(key=lambda x: x["name"].lower())
+
+# Выводим общее количество символов по типам
+print("\nСтатистика символов:")
+for tname in ("functions", "labels", "imports", "exports", "entrypoints", "variables", "typedefs"):
+    count = getattr(analysis.syms, 'number_of_' + tname, 0)
+    print(f"* Количество {tname}: {count}")
+
+# Выводим полный список символов в консоль
+print("\nПолный список символов:")
+for sym in symbol_list:
+    print(sym["name"])
+
+# Сохраняем результаты в файл
+with open(output_file, "w", encoding="utf-8") as f:
+    f.write("### Полный список символов ###\n\n")
+    f.write("Статистика символов:\n")
+    for tname in ("functions", "labels", "imports", "exports", "entrypoints", "variables", "typedefs"):
+        count = getattr(analysis.syms, 'number_of_' + tname, 0)
+        f.write(f"* Количество {tname}: {count}\n")
+    
+    f.write("\nПолный список символов:\n")
+    for sym in symbol_list:
+        f.write(f"{sym['name']}\n")
+
+print(f"\nРезультаты сохранены в файл: {output_file}")
+
+# Получаем путь к рабочему столу пользователя
+desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+imports_file = os.path.join(desktop_path, "imports_list.txt")
+analysis_file = os.path.join(desktop_path, "malapi_analysis.txt")
+
+# Словарь категорий с API из MalAPI.io
+malapi_categories = {
+    "Ransomware": [
+        "CryptAcquireContextA", "EncryptFileA", "CryptEncrypt", "CryptDecrypt", "CryptCreateHash",
+        "CryptHashData", "CryptDeriveKey", "CryptSetKeyParam", "CryptGetHashParam", "CryptSetKeyParam",
+        "CryptDestroyKey", "CryptGenRandom", "DecryptFileA", "FlushEfsCache", "GetLogicalDrives",
+        "GetDriveTypeA", "CryptStringToBinary", "CryptBinaryToString", "CryptReleaseContext",
+        "CryptDestroyHash", "EnumSystemLocalesA", "CryptProtectData",
+        "CopyFileA", "CopyFile2", "CopyFileExA", "CreateFile2"
+    ],
+    "Injection": [
+        "CreateFileMappingA", "CreateProcessA", "CreateRemoteThread", "CreateRemoteThreadEx",
+        "GetModuleHandleA", "GetProcAddress", "GetThreadContext", "HeapCreate", "LoadLibraryA",
+        "LoadLibraryExA", "LocalAlloc", "MapViewOfFile", "MapViewOfFile2", "MapViewOfFile3",
+        "MapViewOfFileEx", "OpenThread", "Process32First", "Process32Next", "QueueUserAPC",
+        "ReadProcessMemory", "ResumeThread", "SetProcessDEPPolicy", "SetThreadContext",
+        "SuspendThread", "Thread32First", "Thread32Next", "Toolhelp32ReadProcessMemory",
+        "VirtualAlloc", "VirtualAllocEx", "VirtualProtect", "VirtualProtectEx", "WriteProcessMemory",
+        "VirtualAllocExNuma", "VirtualAlloc2", "VirtualAlloc2FromApp", "VirtualAllocFromApp",
+        "VirtualProtectFromApp", "CreateThread", "WaitForSingleObject", "OpenProcess",
+        "OpenFileMappingA", "GetProcessHeap", "GetProcessHeaps", "HeapAlloc", "HeapReAlloc",
+        "GlobalAlloc", "AdjustTokenPrivileges", "CreateProcessAsUserA", "OpenProcessToken",
+        "CreateProcessWithTokenW", "NtAdjustPrivilegesToken", "NtAllocateVirtualMemory", "NtContinue",
+        "NtCreateProcess", "NtCreateProcessEx", "NtCreateSection", "NtCreateThread",
+        "NtCreateThreadEx", "NtCreateUserProcess", "NtDuplicateObject", "NtMapViewOfSection",
+        "NtOpenProcess", "NtOpenThread", "NtProtectVirtualMemory", "NtQueueApcThread",
+        "NtQueueApcThreadEx", "NtQueueApcThreadEx2", "NtReadVirtualMemory", "NtResumeThread",
+        "NtUnmapViewOfSection", "NtWaitForMultipleObjects", "NtWaitForSingleObject",
+        "NtWriteVirtualMemory", "RtlCreateHeap", "LdrLoadDll", "RtlMoveMemory", "RtlCopyMemory",
+        "SetPropA", "WaitForSingleObjectEx", "WaitForMultipleObjects", "WaitForMultipleObjectsEx",
+        "KeInsertQueueApc", "Wow64SetThreadContext", "NtSuspendProcess", "NtResumeProcess",
+        "DuplicateToken", "NtReadVirtualMemoryEx", "CreateProcessInternal", "EnumSystemLocalesA",
+        "UuidFromStringA", "DebugActiveProcessStop",
+        "CreateMutexA", "CreateMutexExA", "UnmapViewOfFile", "NtSetContextThread",
+        "NtSetInformationProcess", "NtSetInformationThread"
+    ],
+    "Anti-Debugging": [
+        "CreateToolhelp32Snapshot", "GetLogicalProcessorInformation", "GetLogicalProcessorInformationEx",
+        "GetTickCount", "OutputDebugStringA", "CheckRemoteDebuggerPresent", "Sleep", "GetSystemTime",
+        "GetComputerNameA", "SleepEx", "IsDebuggerPresent", "GetUserNameA", "NtQueryInformationProcess",
+        "ExitWindowsEx", "FindWindowA", "FindWindowExA", "GetForegroundWindow", "GetTickCount64",
+        "QueryPerformanceFrequency", "QueryPerformanceCounter", "GetNativeSystemInfo", "RtlGetVersion",
+        "GetSystemTimeAsFileTime", "CountClipboardFormats",
+        "NtMakeTemporaryObject", "NtShutdownSystem"
+    ],
+    "Evasion": [
+        "CreateFileMappingA", "DeleteFileA", "GetModuleHandleA", "GetProcAddress", "LoadLibraryA",
+        "LoadLibraryExA", "LoadResource", "SetEnvironmentVariableA", "SetFileTime", "Sleep",
+        "WaitForSingleObject", "SetFileAttributesA", "SleepEx", "NtDelayExecution",
+        "NtWaitForMultipleObjects", "NtWaitForSingleObject", "CreateWindowExA", "RegisterHotKey",
+        "timeSetEvent", "IcmpSendEcho", "WaitForSingleObjectEx", "WaitForMultipleObjects",
+        "WaitForMultipleObjectsEx", "SetWaitableTimer", "CreateTimerQueueTimer", "CreateWaitableTimer",
+        "SetWaitableTimer", "SetTimer", "Select", "ImpersonateLoggedOnUser", "SetThreadToken",
+        "DuplicateToken", "SizeOfResource", "LockResource", "CreateProcessInternal", "TimeGetTime",
+        "EnumSystemLocalesA", "UuidFromStringA", "CryptProtectData",
+        "DeviceIoControl", "FindResourceA", "FindResourceExA", "MoveFileA", "MoveFileExA",
+        "SetThreadPriority", "lstrcatA", "DrawTextExA", "GetDesktopWindow"
+    ],
+    "Internet": [
+        "WinExec", "FtpPutFileA", "HttpOpenRequestA", "HttpSendRequestA", "HttpSendRequestExA",
+        "InternetCloseHandle", "InternetOpenA", "InternetOpenUrlA", "InternetReadFile",
+        "InternetReadFileExA", "InternetWriteFile", "URLDownloadToFile", "URLDownloadToCacheFile",
+        "URLOpenBlockingStream", "URLOpenStream", "Accept", "Bind", "Connect", "Gethostbyname",
+        "Inet_addr", "Recv", "Send", "WSAStartup", "Gethostname", "Socket", "WSACleanup", "Listen",
+        "ShellExecuteA", "ShellExecuteExA", "DnsQuery_A", "DnsQueryEx", "WNetOpenEnumA",
+        "FindFirstUrlCacheEntryA", "FindNextUrlCacheEntryA", "InternetConnectA", "InternetSetOptionA",
+        "WSASocketA", "Closesocket", "WSAIoctl", "ioctlsocket", "HttpAddRequestHeaders",
+        "NetShareSetInfo", "NetShareAdd", "WNetOpenEnumA", "WNetEnumResourceA", "WNetAddConnection2A"
+    ],
+    "Spying": [
+        "AttachThreadInput", "CallNextHookEx", "GetAsyncKeyState", "GetClipboardData", "GetDC",
+        "GetDCEx", "GetForegroundWindow", "GetKeyboardState", "GetKeyState", "GetMessageA",
+        "GetRawInputData", "GetWindowDC", "MapVirtualKeyA", "MapVirtualKeyExA", "PeekMessageA",
+        "PostMessageA", "PostThreadMessageA", "RegisterHotKey", "RegisterRawInputDevices",
+        "SendMessageA", "SendMessageCallbackA", "SendMessageTimeoutA", "SendNotifyMessageA",
+        "SetWindowsHookExA", "SetWinEventHook", "UnhookWindowsHookEx", "BitBlt", "StretchBlt",
+        "GetKeynameTextA", "Bitmap",
+        "DrawTextExA", "GetDesktopWindow", "SetClipboardData", "OpenClipboard", "BringWindowToTop", "SetFocus"
+    ],
+    "Enumeration": [
+        "CreateToolhelp32Snapshot", "EnumDeviceDrivers", "EnumProcesses", "EnumProcessModules",
+        "EnumProcessModulesEx", "FindFirstFileA", "FindNextFileA", "GetLogicalProcessorInformation",
+        "GetLogicalProcessorInformationEx", "GetModuleBaseNameA", "GetSystemDefaultLangId",
+        "GetVersionExA", "GetWindowsDirectoryA", "IsWoW64Process", "Module32First", "Module32Next",
+        "Process32First", "Process32Next", "ReadProcessMemory", "Thread32First", "Thread32Next",
+        "GetSystemDirectoryA", "GetSystemTime", "ReadFile", "GetComputerNameA", "VirtualQueryEx",
+        "GetProcessIdOfThread", "GetProcessId", "GetCurrentThread", "GetCurrentThreadId",
+        "GetThreadId", "GetThreadInformation", "GetCurrentProcess", "GetCurrentProcessId",
+        "SearchPathA", "GetFileTime", "GetFileAttributesA", "LookupPrivilegeValueA",
+        "LookupAccountNameA", "GetCurrentHwProfileA", "GetUserNameA", "RegEnumKeyExA",
+        "RegEnumValueA", "RegQueryInfoKeyA", "RegQueryMultipleValuesA", "RegQueryValueExA",
+        "NtQueryDirectoryFile", "NtQueryInformationProcess", "NtQuerySystemEnvironmentValueEx",
+        "EnumDesktopWindows", "EnumWindows", "NetShareEnum", "NetShareGetInfo", "NetShareCheck",
+        "GetAdaptersInfo", "PathFileExistsA", "GetNativeSystemInfo", "RtlGetVersion",
+        "GetIpNetTable", "GetLogicalDrives", "GetDriveTypeA", "RegEnumKeyA", "WNetEnumResourceA",
+        "WNetCloseEnum", "FindFirstUrlCacheEntryA", "FindNextUrlCacheEntryA", "WNetAddConnection2A",
+        "WNetAddConnectionA", "EnumResourceTypesA", "EnumResourceTypesExA", "GetSystemTimeAsFileTime",
+        "GetThreadLocale", "EnumSystemLocalesA",
+        "GetModuleFileNameA", "GetModuleFileNameExA", "GetTempPathA", "PeekNamedPipe", "CreatePipe", "NtQueryTimer"
+    ],
+    "Helper": [
+        "ConnectNamedPipe", "TerminateThread", "GetTempFileNameA", "SetCurrentDirectory", "FindClose",
+        "ControlService", "ControlServiceExA", "CreateServiceA", "DeleteService", "OpenSCManagerA",
+        "OpenServiceA", "RegOpenKeyA", "StartServiceA", "StartServiceCtrlDispatcherA", "RegCreateKeyA",
+        "RegSetKeyValueA", "RegGetValueA", "RegFlushKey", "RegGetKeySecurity", "RegLoadKeyA",
+        "RegLoadMUIStringA", "RegOpenCurrentUser", "RegOpenKeyTransactedA", "RegOpenUserClassesRoot",
+        "RegOverridePredefKey", "RegReplaceKeyA", "RegRestoreKeyA", "RegSaveKeyA", "RegSaveKeyExA",
+        "RegSetKeySecurity", "RegUnLoadKeyA", "RegConnectRegistryA", "RegCopyTreeA",
+        "RegCreateKeyTransactedA", "RegDeleteKeyA", "RegDeleteKeyExA", "RegDeleteKeyTransactedA",
+        "RegDeleteKeyValueA", "RegDeleteTreeA", "NtClose", "NtDeleteKey", "NtDeleteValueKey",
+        "NtSetValueKey", "RtlSetProcessIsCritical", "SetWindowLongA", "SetWindowLongPtrA", "CallWindowProcA",
+        "SetClipboardData", "OpenClipboard"
+    ]
+}
+
+# Описание функций в контексте вредоносного ПО
+malapi_descriptions = {
+    # Ransomware
+    "CryptAcquireContextA": "Получает доступ к криптографическому провайдеру, используется для шифрования данных.",
+    "EncryptFileA": "Шифрует файл, часто используется в вымогателях для блокировки доступа к данным.",
+    "CryptEncrypt": "Шифрует данные, применяется для создания зашифрованных файлов.",
+    "CryptDecrypt": "Расшифровывает данные, может использоваться для доступа к зашифрованным данным.",
+    "CryptCreateHash": "Создаёт хэш, используется для проверки целостности или шифрования.",
+    "CryptHashData": "Добавляет данные в хэш, применяется в процессах шифрования.",
+    "CryptDeriveKey": "Создаёт ключ шифрования на основе пароля, используется в вымогателях.",
+    "CryptSetKeyParam": "Устанавливает параметры ключа, применяется в шифровании.",
+    "CryptGetHashParam": "Получает параметры хэша, используется для проверки шифрования.",
+    "CryptDestroyKey": "Уничтожает ключ шифрования, может использоваться для сокрытия следов.",
+    "CryptGenRandom": "Генерирует случайные данные, часто используется для создания ключей шифрования.",
+    "DecryptFileA": "Расшифровывает файл, может использоваться для восстановления данных после оплаты выкупа.",
+    "FlushEfsCache": "Очищает кэш шифрования EFS, может использоваться для уклонения от обнаружения.",
+    "GetLogicalDrives": "Получает список дисков, используется для поиска файлов для шифрования.",
+    "GetDriveTypeA": "Определяет тип диска, помогает выбрать цели для шифрования.",
+    "CryptStringToBinary": "Преобразует строку в бинарные данные, используется для обработки зашифрованных данных.",
+    "CryptBinaryToString": "Преобразует бинарные данные в строку, применяется для передачи зашифрованных данных.",
+    "CryptReleaseContext": "Освобождает криптографический контекст, используется для завершения шифрования.",
+    "CryptDestroyHash": "Уничтожает хэш, может использоваться для сокрытия следов.",
+    "EnumSystemLocalesA": "Перечисляет локали системы, может использоваться для адаптации шифрования.",
+    "CryptProtectData": "Шифрует данные с защитой, используется для хранения конфиденциальной информации.",
+    "CopyFileA": "Копирует файл, может использоваться для создания копий перед шифрованием.",
+    "CopyFile2": "Копирует файл (новая версия), применяется для создания копий перед шифрованием.",
+    "CopyFileExA": "Копирует файл с расширенными параметрами, используется для создания копий перед шифрованием.",
+    "CreateFile2": "Создаёт файл (новая версия), может использоваться для записи зашифрованных данных.",
+
+    # Injection
+    "CreateFileMappingA": "Создаёт отображение файла в памяти, используется для инъекции кода.",
+    "CreateProcessA": "Создаёт новый процесс, часто используется для запуска вредоносного кода.",
+    "CreateRemoteThread": "Создаёт поток в другом процессе, используется для инъекции кода.",
+    "CreateRemoteThreadEx": "Создаёт поток в другом процессе с расширенными параметрами, применяется для инъекции.",
+    "GetModuleHandleA": "Получает дескриптор модуля, используется для динамической загрузки библиотек при инъекции.",
+    "GetProcAddress": "Получает адрес функции в DLL, используется для вызова функций при инъекции.",
+    "GetThreadContext": "Получает контекст потока, применяется для манипуляции потоками при инъекции.",
+    "HeapCreate": "Создаёт кучу, может использоваться для выделения памяти при инъекции.",
+    "LoadLibraryA": "Загружает библиотеку, используется для динамической загрузки вредоносных DLL.",
+    "LoadLibraryExA": "Загружает библиотеку с расширенными параметрами, применяется для инъекции.",
+    "LocalAlloc": "Выделяет память, используется для подготовки данных при инъекции.",
+    "MapViewOfFile": "Отображает файл в память, применяется для инъекции кода.",
+    "MapViewOfFile2": "Отображает файл в память (новая версия), используется для инъекции.",
+    "MapViewOfFile3": "Отображает файл в память (новая версия), применяется для инъекции.",
+    "MapViewOfFileEx": "Отображает файл в память с расширенными параметрами, используется для инъекции.",
+    "OpenThread": "Открывает поток, применяется для манипуляции потоками при инъекции.",
+    "Process32First": "Получает информацию о первом процессе, используется для перечисления процессов.",
+    "Process32Next": "Получает информацию о следующем процессе, применяется для перечисления процессов.",
+    "QueueUserAPC": "Добавляет APC в очередь потока, используется для инъекции кода.",
+    "ReadProcessMemory": "Читает память другого процесса, применяется для анализа или инъекции.",
+    "ResumeThread": "Возобновляет поток, используется после инъекции кода.",
+    "SetProcessDEPPolicy": "Устанавливает политику DEP, может использоваться для обхода защиты.",
+    "SetThreadContext": "Устанавливает контекст потока, применяется для инъекции кода.",
+    "SuspendThread": "Приостанавливает поток, используется перед инъекцией кода.",
+    "Thread32First": "Получает информацию о первом потоке, применяется для перечисления потоков.",
+    "Thread32Next": "Получает информацию о следующем потоке, используется для перечисления потоков.",
+    "Toolhelp32ReadProcessMemory": "Читает память процесса, применяется для анализа или инъекции.",
+    "VirtualAlloc": "Выделяет память, используется для размещения вредоносного кода.",
+    "VirtualAllocEx": "Выделяет память в другом процессе, применяется для инъекции.",
+    "VirtualProtect": "Изменяет защиту памяти, используется для выполнения инъектированного кода.",
+    "VirtualProtectEx": "Изменяет защиту памяти в другом процессе, применяется для инъекции.",
+    "WriteProcessMemory": "Записывает данные в память другого процесса, используется для инъекции кода.",
+    "VirtualAllocExNuma": "Выделяет память с NUMA, может использоваться для инъекции.",
+    "VirtualAlloc2": "Выделяет память (новая версия), применяется для инъекции.",
+    "VirtualAlloc2FromApp": "Выделяет память для приложений, используется для инъекции.",
+    "VirtualAllocFromApp": "Выделяет память для приложений, применяется для инъекции.",
+    "VirtualProtectFromApp": "Изменяет защиту памяти для приложений, используется для инъекции.",
+    "CreateThread": "Создаёт поток, может использоваться для выполнения вредоносного кода.",
+    "WaitForSingleObject": "Ожидает завершения объекта, используется для синхронизации при инъекции.",
+    "OpenProcess": "Открывает процесс, применяется для инъекции кода.",
+    "OpenFileMappingA": "Открывает отображение файла, используется для инъекции.",
+    "GetProcessHeap": "Получает дескриптор кучи процесса, применяется для работы с памятью.",
+    "GetProcessHeaps": "Получает список куч процесса, используется для работы с памятью.",
+    "HeapAlloc": "Выделяет память в куче, применяется для инъекции.",
+    "HeapReAlloc": "Перераспределяет память в куче, используется для инъекции.",
+    "GlobalAlloc": "Выделяет глобальную память, применяется для инъекции.",
+    "AdjustTokenPrivileges": "Изменяет привилегии токена, используется для повышения прав.",
+    "CreateProcessAsUserA": "Создаёт процесс от имени пользователя, применяется для инъекции.",
+    "OpenProcessToken": "Открывает токен процесса, используется для повышения прав.",
+    "CreateProcessWithTokenW": "Создаёт процесс с токеном, применяется для инъекции.",
+    "NtAdjustPrivilegesToken": "Изменяет привилегии токена (NT), используется для повышения прав.",
+    "NtAllocateVirtualMemory": "Выделяет виртуальную память (NT), применяется для инъекции.",
+    "NtContinue": "Продолжает выполнение (NT), используется для манипуляции потоками.",
+    "NtCreateProcess": "Создаёт процесс (NT), применяется для инъекции.",
+    "NtCreateProcessEx": "Создаёт процесс с расширенными параметрами (NT), используется для инъекции.",
+    "NtCreateSection": "Создаёт секцию памяти (NT), применяется для инъекции.",
+    "NtCreateThread": "Создаёт поток (NT), используется для инъекции.",
+    "NtCreateThreadEx": "Создаёт поток с расширенными параметрами (NT), применяется для инъекции.",
+    "NtCreateUserProcess": "Создаёт пользовательский процесс (NT), используется для инъекции.",
+    "NtDuplicateObject": "Дублирует объект (NT), применяется для манипуляции объектами.",
+    "NtMapViewOfSection": "Отображает секцию в память (NT), используется для инъекции.",
+    "NtOpenProcess": "Открывает процесс (NT), применяется для инъекции.",
+    "NtOpenThread": "Открывает поток (NT), используется для инъекции.",
+    "NtProtectVirtualMemory": "Изменяет защиту памяти (NT), применяется для инъекции.",
+    "NtQueueApcThread": "Добавляет APC в очередь потока (NT), используется для инъекции.",
+    "NtQueueApcThreadEx": "Добавляет APC в очередь потока с расширенными параметрами (NT), применяется для инъекции.",
+    "NtQueueApcThreadEx2": "Добавляет APC в очередь потока (новая версия, NT), используется для инъекции.",
+    "NtReadVirtualMemory": "Читает виртуальную память (NT), применяется для анализа или инъекции.",
+    "NtResumeThread": "Возобновляет поток (NT), используется после инъекции.",
+    "NtUnmapViewOfSection": "Снимает отображение секции (NT), применяется для инъекции.",
+    "NtWaitForMultipleObjects": "Ожидает несколько объектов (NT), используется для синхронизации.",
+    "NtWaitForSingleObject": "Ожидает один объект (NT), применяется для синхронизации.",
+    "NtWriteVirtualMemory": "Записывает в виртуальную память (NT), используется для инъекции.",
+    "RtlCreateHeap": "Создаёт кучу (RTL), применяется для работы с памятью.",
+    "LdrLoadDll": "Загружает DLL (RTL), используется для инъекции.",
+    "RtlMoveMemory": "Перемещает память (RTL), применяется для инъекции.",
+    "RtlCopyMemory": "Копирует память (RTL), используется для инъекции.",
+    "SetPropA": "Устанавливает свойство окна, может использоваться для инъекции.",
+    "WaitForSingleObjectEx": "Ожидает объект с расширенными параметрами, применяется для синхронизации.",
+    "WaitForMultipleObjects": "Ожидает несколько объектов, используется для синхронизации.",
+    "WaitForMultipleObjectsEx": "Ожидает несколько объектов с расширенными параметрами, применяется для синхронизации.",
+    "KeInsertQueueApc": "Добавляет APC в очередь ядра, используется для инъекции.",
+    "Wow64SetThreadContext": "Устанавливает контекст потока в Wow64, применяется для инъекции.",
+    "NtSuspendProcess": "Приостанавливает процесс (NT), используется перед инъекцией.",
+    "NtResumeProcess": "Возобновляет процесс (NT), применяется после инъекции.",
+    "DuplicateToken": "Дублирует токен, используется для повышения прав.",
+    "NtReadVirtualMemoryEx": "Читает виртуальную память с расширенными параметрами (NT), применяется для анализа.",
+    "CreateProcessInternal": "Создаёт процесс (внутренняя функция), используется для инъекции.",
+    "CreateMutexA": "Создаёт мьютекс, используется для синхронизации при инъекции.",
+    "CreateMutexExA": "Создаёт мьютекс с расширенными параметрами, применяется для синхронизации.",
+    "UnmapViewOfFile": "Снимает отображение файла из памяти, используется для инъекции.",
+    "NtSetContextThread": "Устанавливает контекст потока (NT), применяется для инъекции.",
+    "NtSetInformationProcess": "Устанавливает информацию о процессе (NT), используется для манипуляции процессами.",
+    "NtSetInformationThread": "Устанавливает информацию о потоке (NT), применяется для манипуляции потоками.",
+
+    # Anti-Debugging
+    "CreateToolhelp32Snapshot": "Создаёт снимок процессов/потоков, используется для проверки отладчиков.",
+    "GetLogicalProcessorInformation": "Получает информацию о процессорах, может использоваться для антиотладки.",
+    "GetLogicalProcessorInformationEx": "Получает расширенную информацию о процессорах, применяется для антиотладки.",
+    "GetTickCount": "Получает время работы системы, используется для проверки времени выполнения.",
+    "OutputDebugStringA": "Выводит строку отладки, может использоваться для обнаружения отладчика.",
+    "CheckRemoteDebuggerPresent": "Проверяет наличие удалённого отладчика, используется для антиотладки.",
+    "Sleep": "Приостанавливает выполнение, используется для задержки и затруднения анализа.",
+    "GetSystemTime": "Получает системное время, может использоваться для проверки времени выполнения.",
+    "GetComputerNameA": "Получает имя компьютера, используется для антиотладки или перечисления.",
+    "SleepEx": "Приостанавливает выполнение с расширенными параметрами, применяется для антиотладки.",
+    "IsDebuggerPresent": "Проверяет наличие отладчика, используется для антиотладки.",
+    "GetUserNameA": "Получает имя пользователя, может использоваться для антиотладки или перечисления.",
+    "NtQueryInformationProcess": "Запрашивает информацию о процессе (NT), используется для обнаружения отладчика.",
+    "ExitWindowsEx": "Завершает работу Windows, может использоваться для уклонения от анализа.",
+    "FindWindowA": "Ищет окно, используется для обнаружения отладочных инструментов.",
+    "FindWindowExA": "Ищет окно с расширенными параметрами, применяется для антиотладки.",
+    "GetForegroundWindow": "Получает активное окно, может использоваться для антиотладки.",
+    "GetTickCount64": "Получает время работы системы (64-бит), используется для проверки времени.",
+    "QueryPerformanceFrequency": "Получает частоту счётчика производительности, применяется для антиотладки.",
+    "QueryPerformanceCounter": "Получает значение счётчика производительности, используется для антиотладки.",
+    "GetNativeSystemInfo": "Получает информацию о системе, может использоваться для антиотладки.",
+    "RtlGetVersion": "Получает версию системы (RTL), применяется для антиотладки.",
+    "GetSystemTimeAsFileTime": "Получает системное время в формате файла, используется для антиотладки.",
+    "CountClipboardFormats": "Считает форматы в буфере обмена, может использоваться для антиотладки.",
+    "NtMakeTemporaryObject": "Делает объект временным (NT), может использоваться для уклонения от анализа.",
+    "NtShutdownSystem": "Выключает систему (NT), применяется для уклонения от анализа.",
+
+    # Evasion
+    "CreateFileMappingA": "Создаёт отображение файла в памяти, используется для маскировки данных.",
+    "DeleteFileA": "Удаляет файл, часто используется для сокрытия следов.",
+    "GetModuleHandleA": "Получает дескриптор модуля, используется для динамической загрузки библиотек.",
+    "GetProcAddress": "Получает адрес функции в DLL, применяется для уклонения.",
+    "LoadLibraryA": "Загружает библиотеку, используется для динамической загрузки DLL.",
+    "LoadLibraryExA": "Загружает библиотеку с расширенными параметрами, применяется для уклонения.",
+    "LoadResource": "Загружает ресурс, может использоваться для маскировки данных.",
+    "SetEnvironmentVariableA": "Устанавливает переменную окружения, используется для маскировки.",
+    "SetFileTime": "Устанавливает время файла, применяется для сокрытия следов.",
+    "Sleep": "Приостанавливает выполнение, используется для задержки и уклонения.",
+    "WaitForSingleObject": "Ожидает завершения объекта, применяется для синхронизации и уклонения.",
+    "SetFileAttributesA": "Устанавливает атрибуты файла, используется для сокрытия файлов.",
+    "SleepEx": "Приостанавливает выполнение с расширенными параметрами, применяется для уклонения.",
+    "NtDelayExecution": "Задерживает выполнение (NT), используется для уклонения.",
+    "NtWaitForMultipleObjects": "Ожидает несколько объектов (NT), применяется для уклонения.",
+    "NtWaitForSingleObject": "Ожидает один объект (NT), используется для уклонения.",
+    "CreateWindowExA": "Создаёт окно, может использоваться для маскировки (например, фейковые диалоги).",
+    "RegisterHotKey": "Регистрирует горячую клавишу, применяется для уклонения.",
+    "timeSetEvent": "Устанавливает таймер, используется для периодического выполнения задач.",
+    "IcmpSendEcho": "Отправляет ICMP-запрос, может использоваться для уклонения.",
+    "WaitForSingleObjectEx": "Ожидает объект с расширенными параметрами, применяется для уклонения.",
+    "WaitForMultipleObjects": "Ожидает несколько объектов, используется для уклонения.",
+    "WaitForMultipleObjectsEx": "Ожидает несколько объектов с расширенными параметрами, применяется для уклонения.",
+    "SetWaitableTimer": "Устанавливает таймер, используется для уклонения.",
+    "CreateTimerQueueTimer": "Создаёт таймер в очереди, применяется для уклонения.",
+    "CreateWaitableTimer": "Создаёт ожидающий таймер, используется для уклонения.",
+    "SetTimer": "Устанавливает таймер, применяется для уклонения.",
+    "Select": "Ожидает события на сокетах, может использоваться для уклонения.",
+    "ImpersonateLoggedOnUser": "Имитирует пользователя, используется для уклонения.",
+    "SetThreadToken": "Устанавливает токен потока, применяется для уклонения.",
+    "DuplicateToken": "Дублирует токен, используется для уклонения.",
+    "SizeOfResource": "Получает размер ресурса, может использоваться для маскировки.",
+    "LockResource": "Блокирует ресурс, применяется для маскировки.",
+    "CreateProcessInternal": "Создаёт процесс (внутренняя функция), используется для уклонения.",
+    "TimeGetTime": "Получает время, может использоваться для уклонения.",
+    "EnumSystemLocalesA": "Перечисляет локали системы, может использоваться для адаптации и уклонения.",
+    "UuidFromStringA": "Преобразует строку в UUID, применяется для маскировки данных.",
+    "CryptProtectData": "Шифрует данные с защитой, используется для сокрытия конфиденциальной информации.",
+    "DeviceIoControl": "Управляет устройством, может использоваться для взаимодействия с драйверами и уклонения.",
+    "FindResourceA": "Ищет ресурс в модуле, применяется для маскировки данных.",
+    "FindResourceExA": "Ищет ресурс с расширенными параметрами, используется для маскировки.",
+    "MoveFileA": "Перемещает файл, может использоваться для сокрытия следов.",
+    "MoveFileExA": "Перемещает файл с расширенными параметрами, применяется для сокрытия следов.",
+    "SetThreadPriority": "Изменяет приоритет потока, используется для уклонения от анализа.",
+    "lstrcatA": "Конкатенирует строки, может использоваться для маскировки данных.",
+    "DrawTextExA": "Отрисовывает текст в окне, может использоваться для создания фейковых диалогов.",
+    "GetDesktopWindow": "Получает дескриптор рабочего стола, применяется для маскировки (например, фейковые окна).",
+
+    # Internet
+    "WinExec": "Запускает команду, часто используется для выполнения сетевых загрузок или команд.",
+    "FtpPutFileA": "Загружает файл на FTP-сервер, применяется для передачи данных.",
+    "HttpOpenRequestA": "Открывает HTTP-запрос, используется для связи с C2-сервером.",
+    "HttpSendRequestA": "Отправляет HTTP-запрос, применяется для передачи данных на сервер.",
+    "HttpSendRequestExA": "Отправляет HTTP-запрос с расширенными параметрами, используется для связи с C2.",
+    "InternetCloseHandle": "Закрывает интернет-дескриптор, применяется для завершения сетевых операций.",
+    "InternetOpenA": "Инициализирует интернет-сессию, используется для сетевых подключений.",
+    "InternetOpenUrlA": "Открывает URL, применяется для загрузки данных с сервера.",
+    "InternetReadFile": "Читает данные из интернета, используется для получения данных с C2.",
+    "InternetReadFileExA": "Читает данные из интернета с расширенными параметрами, применяется для загрузки.",
+    "InternetWriteFile": "Записывает данные в интернет, используется для передачи данных на сервер.",
+    "URLDownloadToFile": "Скачивает файл по URL, часто используется для загрузки вредоносных компонентов.",
+    "URLDownloadToCacheFile": "Скачивает файл в кэш, применяется для загрузки данных.",
+    "URLOpenBlockingStream": "Открывает поток по URL, используется для загрузки данных.",
+    "URLOpenStream": "Открывает поток по URL, применяется для загрузки данных.",
+    "Accept": "Принимает входящее соединение, используется для сетевого взаимодействия.",
+    "Bind": "Привязывает сокет к адресу, применяется для сетевых подключений.",
+    "Connect": "Устанавливает соединение, используется для связи с C2-сервером.",
+    "Gethostbyname": "Получает IP-адрес по имени хоста, применяется для связи с сервером.",
+    "Inet_addr": "Преобразует строку в IP-адрес, используется для сетевых подключений.",
+    "Recv": "Принимает данные через сокет, применяется для получения данных с сервера.",
+    "Send": "Отправляет данные через сокет, используется для передачи данных на сервер.",
+    "WSAStartup": "Инициализирует Winsock, применяется для сетевых операций.",
+    "Gethostname": "Получает имя хоста, может использоваться для сетевого перечисления.",
+    "Socket": "Создаёт сокет, используется для сетевых подключений.",
+    "WSACleanup": "Завершает работу Winsock, применяется для завершения сетевых операций.",
+    "Listen": "Слушает входящие соединения, используется для сетевого взаимодействия.",
+    "ShellExecuteA": "Запускает команду или URL, часто используется для загрузки данных с интернета.",
+    "ShellExecuteExA": "Запускает команду с расширенными параметрами, применяется для сетевых операций.",
+    "DnsQuery_A": "Выполняет DNS-запрос, используется для связи с сервером.",
+    "DnsQueryEx": "Выполняет DNS-запрос с расширенными параметрами, применяется для сетевого взаимодействия.",
+    "WNetOpenEnumA": "Открывает перечисление сетевых ресурсов, используется для сетевого перечисления.",
+    "FindFirstUrlCacheEntryA": "Ищет первую запись в кэше URL, применяется для анализа сетевой активности.",
+    "FindNextUrlCacheEntryA": "Ищет следующую запись в кэше URL, используется для анализа сетевой активности.",
+    "InternetConnectA": "Устанавливает интернет-соединение, применяется для связи с сервером.",
+    "InternetSetOptionA": "Устанавливает параметры интернета, используется для настройки соединения.",
+    "WSASocketA": "Создаёт сокет с расширенными параметрами, применяется для сетевых подключений.",
+    "Closesocket": "Закрывает сокет, используется для завершения сетевых операций.",
+    "WSAIoctl": "Управляет сокетом, применяется для сетевых операций.",
+    "ioctlsocket": "Управляет сокетом, используется для сетевых операций.",
+    "HttpAddRequestHeaders": "Добавляет заголовки к HTTP-запросу, применяется для связи с сервером.",
+    "NetShareSetInfo": "Устанавливает информацию о сетевом ресурсе, используется для сетевого взаимодействия.",
+    "NetShareAdd": "Добавляет сетевой ресурс, применяется для сетевого взаимодействия.",
+    "WNetOpenEnumA": "Открывает перечисление сетевых ресурсов, используется для сетевого перечисления.",
+    "WNetEnumResourceA": "Перечисляет сетевые ресурсы, применяется для сетевого взаимодействия.",
+    "WNetAddConnection2A": "Добавляет сетевое подключение, используется для доступа к сетевым ресурсам.",
+
+    # Spying
+    "AttachThreadInput": "Прикрепляет ввод одного потока к другому, используется для перехвата событий.",
+    "CallNextHookEx": "Вызывает следующий хук, применяется для перехвата событий (например, кейлоггинг).",
+    "GetAsyncKeyState": "Проверяет состояние клавиши, используется для кейлоггинга.",
+    "GetClipboardData": "Получает данные из буфера обмена, применяется для кражи скопированных данных.",
+    "GetDC": "Получает контекст устройства, используется для захвата скриншотов.",
+    "GetDCEx": "Получает контекст устройства с расширенными параметрами, применяется для захвата скриншотов.",
+    "GetForegroundWindow": "Получает активное окно, используется для шпионской активности.",
+    "GetKeyboardState": "Получает состояние клавиатуры, применяется для кейлоггинга.",
+    "GetKeyState": "Проверяет состояние клавиши, используется для кейлоггинга.",
+    "GetMessageA": "Получает сообщение из очереди, применяется для перехвата событий.",
+    "GetRawInputData": "Получает необработанные данные ввода, используется для кейлоггинга.",
+    "GetWindowDC": "Получает контекст окна, применяется для захвата скриншотов.",
+    "MapVirtualKeyA": "Преобразует код клавиши, используется для кейлоггинга.",
+    "MapVirtualKeyExA": "Преобразует код клавиши с расширенными параметрами, применяется для кейлоггинга.",
+    "PeekMessageA": "Проверяет очередь сообщений, используется для перехвата событий.",
+    "PostMessageA": "Отправляет сообщение окну, применяется для шпионской активности.",
+    "PostThreadMessageA": "Отправляет сообщение потоку, используется для шпионской активности.",
+    "RegisterHotKey": "Регистрирует горячую клавишу, применяется для перехвата событий.",
+    "RegisterRawInputDevices": "Регистрирует устройства ввода, используется для кейлоггинга.",
+    "SendMessageA": "Отправляет сообщение окну, применяется для шпионской активности.",
+    "SendMessageCallbackA": "Отправляет сообщение с обратным вызовом, используется для шпионской активности.",
+    "SendMessageTimeoutA": "Отправляет сообщение с таймаутом, применяется для шпионской активности.",
+    "SendNotifyMessageA": "Отправляет уведомление окну, используется для шпионской активности.",
+    "SetWindowsHookExA": "Устанавливает хук, применяется для кейлоггинга или перехвата событий.",
+    "SetWinEventHook": "Устанавливает хук на события, используется для шпионской активности.",
+    "UnhookWindowsHookEx": "Снимает хук, применяется для завершения шпионской активности.",
+    "BitBlt": "Копирует изображение, используется для захвата скриншотов.",
+    "StretchBlt": "Копирует изображение с масштабированием, применяется для захвата скриншотов.",
+    "GetKeynameTextA": "Получает имя клавиши, используется для кейлоггинга.",
+    "DrawTextExA": "Отрисовывает текст в окне, может использоваться для создания фейковых диалогов.",
+    "GetDesktopWindow": "Получает дескриптор рабочего стола, применяется для захвата скриншотов.",
+    "SetClipboardData": "Устанавливает данные в буфер обмена, используется для подмены данных.",
+    "OpenClipboard": "Открывает буфер обмена, применяется для кражи или подмены данных.",
+    "BringWindowToTop": "Переводит окно на передний план, может использоваться для шпионской активности.",
+    "SetFocus": "Устанавливает фокус на окно, применяется для шпионской активности.",
+    "Bitmap": "Работает с растровыми изображениями, может использоваться для захвата скриншотов или стеганографии.",
+
+    # Enumeration
+    "CreateToolhelp32Snapshot": "Создаёт снимок процессов/потоков, используется для перечисления.",
+    "EnumDeviceDrivers": "Перечисляет драйверы, применяется для сбора информации о системе.",
+    "EnumProcesses": "Перечисляет процессы, используется для сбора информации о системе.",
+    "EnumProcessModules": "Перечисляет модули процесса, применяется для анализа системы.",
+    "EnumProcessModulesEx": "Перечисляет модули процесса с расширенными параметрами, используется для перечисления.",
+    "FindFirstFileA": "Ищет первый файл, применяется для перечисления файлов.",
+    "FindNextFileA": "Ищет следующий файл, используется для перечисления файлов.",
+    "GetLogicalProcessorInformation": "Получает информацию о процессорах, применяется для перечисления.",
+    "GetLogicalProcessorInformationEx": "Получает расширенную информацию о процессорах, используется для перечисления.",
+    "GetModuleBaseNameA": "Получает базовое имя модуля, применяется для перечисления модулей.",
+    "GetSystemDefaultLangId": "Получает язык системы, используется для перечисления.",
+    "GetVersionExA": "Получает версию системы, применяется для перечисления.",
+    "GetWindowsDirectoryA": "Получает путь к папке Windows, используется для перечисления.",
+    "IsWoW64Process": "Проверяет, является ли процесс 32-битным в 64-битной системе, применяется для перечисления.",
+    "Module32First": "Получает первый модуль, используется для перечисления модулей.",
+    "Module32Next": "Получает следующий модуль, применяется для перечисления модулей.",
+    "Process32First": "Получает первый процесс, используется для перечисления процессов.",
+    "Process32Next": "Получает следующий процесс, применяется для перечисления процессов.",
+    "ReadProcessMemory": "Читает память процесса, используется для анализа системы.",
+    "Thread32First": "Получает первый поток, применяется для перечисления потоков.",
+    "Thread32Next": "Получает следующий поток, используется для перечисления потоков.",
+    "GetSystemDirectoryA": "Получает путь к системной папке, применяется для перечисления.",
+    "GetSystemTime": "Получает системное время, используется для перечисления.",
+    "ReadFile": "Читает данные из файла, применяется для перечисления содержимого файлов.",
+    "GetComputerNameA": "Получает имя компьютера, используется для перечисления.",
+    "VirtualQueryEx": "Запрашивает информацию о памяти, применяется для перечисления.",
+    "GetProcessIdOfThread": "Получает ID процесса по потоку, используется для перечисления.",
+    "GetProcessId": "Получает ID процесса, применяется для перечисления.",
+    "GetCurrentThread": "Получает текущий поток, используется для перечисления.",
+    "GetCurrentThreadId": "Получает ID текущего потока, применяется для перечисления.",
+    "GetThreadId": "Получает ID потока, используется для перечисления.",
+    "GetThreadInformation": "Получает информацию о потоке, применяется для перечисления.",
+    "GetCurrentProcess": "Получает текущий процесс, используется для перечисления.",
+    "GetCurrentProcessId": "Получает ID текущего процесса, применяется для перечисления.",
+    "SearchPathA": "Ищет файл в пути, используется для перечисления.",
+    "GetFileTime": "Получает время файла, применяется для перечисления.",
+    "GetFileAttributesA": "Получает атрибуты файла, используется для перечисления.",
+    "LookupPrivilegeValueA": "Получает значение привилегии, применяется для перечисления.",
+    "LookupAccountNameA": "Получает информацию об аккаунте, используется для перечисления.",
+    "GetCurrentHwProfileA": "Получает профиль оборудования, применяется для перечисления.",
+    "GetUserNameA": "Получает имя пользователя, используется для перечисления.",
+    "RegEnumKeyExA": "Перечисляет ключи реестра, применяется для перечисления.",
+    "RegEnumValueA": "Перечисляет значения реестра, используется для перечисления.",
+    "RegQueryInfoKeyA": "Запрашивает информацию о ключе реестра, применяется для перечисления.",
+    "RegQueryMultipleValuesA": "Запрашивает несколько значений реестра, используется для перечисления.",
+    "RegQueryValueExA": "Запрашивает значение реестра, применяется для перечисления.",
+    "NtQueryDirectoryFile": "Запрашивает информацию о каталоге (NT), используется для перечисления.",
+    "NtQueryInformationProcess": "Запрашивает информацию о процессе (NT), применяется для перечисления.",
+    "NtQuerySystemEnvironmentValueEx": "Запрашивает переменные окружения (NT), используется для перечисления.",
+    "EnumDesktopWindows": "Перечисляет окна рабочего стола, применяется для перечисления.",
+    "EnumWindows": "Перечисляет окна, используется для перечисления.",
+    "NetShareEnum": "Перечисляет сетевые ресурсы, применяется для перечисления.",
+    "NetShareGetInfo": "Получает информацию о сетевом ресурсе, используется для перечисления.",
+    "NetShareCheck": "Проверяет наличие сетевого ресурса, применяется для перечисления.",
+    "GetAdaptersInfo": "Получает информацию о сетевых адаптерах, используется для перечисления.",
+    "PathFileExistsA": "Проверяет существование пути, применяется для перечисления.",
+    "GetNativeSystemInfo": "Получает информацию о системе, используется для перечисления.",
+    "RtlGetVersion": "Получает версию системы (RTL), применяется для перечисления.",
+    "GetIpNetTable": "Получает таблицу IP-адресов, используется для перечисления.",
+    "GetLogicalDrives": "Получает список дисков, применяется для перечисления.",
+    "GetDriveTypeA": "Определяет тип диска, используется для перечисления.",
+    "RegEnumKeyA": "Перечисляет ключи реестра, применяется для перечисления.",
+    "WNetEnumResourceA": "Перечисляет сетевые ресурсы, используется для перечисления.",
+    "WNetCloseEnum": "Закрывает перечисление сетевых ресурсов, применяется для завершения перечисления.",
+    "FindFirstUrlCacheEntryA": "Ищет первую запись в кэше URL, используется для перечисления.",
+    "FindNextUrlCacheEntryA": "Ищет следующую запись в кэше URL, применяется для перечисления.",
+    "WNetAddConnection2A": "Добавляет сетевое подключение, используется для перечисления.",
+    "WNetAddConnectionA": "Добавляет сетевое подключение, применяется для перечисления.",
+    "EnumResourceTypesA": "Перечисляет типы ресурсов, используется для перечисления.",
+    "EnumResourceTypesExA": "Перечисляет типы ресурсов с расширенными параметрами, применяется для перечисления.",
+    "GetSystemTimeAsFileTime": "Получает системное время в формате файла, используется для перечисления.",
+    "GetThreadLocale": "Получает локаль потока, применяется для перечисления.",
+    "EnumSystemLocalesA": "Перечисляет локали системы, используется для перечисления.",
+    "GetModuleFileNameA": "Получает имя файла модуля, применяется для перечисления модулей.",
+    "GetModuleFileNameExA": "Получает имя файла модуля с расширенными параметрами, используется для перечисления.",
+    "GetTempPathA": "Получает путь к временной папке, применяется для перечисления.",
+    "PeekNamedPipe": "Читает данные из канала, используется для перечисления.",
+    "CreatePipe": "Создаёт канал, применяется для перечисления данных.",
+    "NtQueryTimer": "Запрашивает информацию о таймере (NT), используется для перечисления.",
+
+    # Helper
+    "ConnectNamedPipe": "Подключает именованный канал, используется для взаимодействия между процессами.",
+    "TerminateThread": "Завершает поток, может использоваться для управления потоками.",
+    "GetTempFileNameA": "Получает имя временного файла, применяется для создания временных файлов.",
+    "SetCurrentDirectory": "Устанавливает текущую директорию, используется для управления путями.",
+    "FindClose": "Закрывает поиск файлов, применяется для завершения перечисления.",
+    "ControlService": "Управляет службой, используется для взаимодействия со службами.",
+    "ControlServiceExA": "Управляет службой с расширенными параметрами, применяется для взаимодействия со службами.",
+    "CreateServiceA": "Создаёт службу, используется для персистентности.",
+    "DeleteService": "Удаляет службу, может использоваться для сокрытия следов.",
+    "OpenSCManagerA": "Открывает менеджер служб, применяется для управления службами.",
+    "OpenServiceA": "Открывает службу, используется для управления службами.",
+    "RegOpenKeyA": "Открывает ключ реестра, применяется для работы с реестром.",
+    "StartServiceA": "Запускает службу, используется для персистентности.",
+    "StartServiceCtrlDispatcherA": "Запускает диспетчер служб, применяется для управления службами.",
+    "RegCreateKeyA": "Создаёт ключ реестра, используется для персистентности.",
+    "RegSetKeyValueA": "Устанавливает значение ключа реестра, применяется для персистентности.",
+    "RegGetValueA": "Получает значение ключа реестра, используется для чтения данных.",
+    "RegFlushKey": "Сбрасывает ключ реестра на диск, применяется для сохранения изменений.",
+    "RegGetKeySecurity": "Получает безопасность ключа реестра, используется для анализа прав.",
+    "RegLoadKeyA": "Загружает ключ реестра, применяется для работы с реестром.",
+    "RegLoadMUIStringA": "Загружает строку MUI, используется для работы с локализацией.",
+    "RegOpenCurrentUser": "Открывает текущего пользователя в реестре, применяется для работы с реестром.",
+    "RegOpenKeyTransactedA": "Открывает ключ реестра с транзакцией, используется для работы с реестром.",
+    "RegOpenUserClassesRoot": "Открывает корень классов пользователя, применяется для работы с реестром.",
+    "RegOverridePredefKey": "Переопределяет предопределённый ключ, используется для манипуляции реестром.",
+    "RegReplaceKeyA": "Заменяет ключ реестра, применяется для персистентности.",
+    "RegRestoreKeyA": "Восстанавливает ключ реестра, используется для работы с реестром.",
+    "RegSaveKeyA": "Сохраняет ключ реестра, применяется для работы с реестром.",
+    "RegSaveKeyExA": "Сохраняет ключ реестра с расширенными параметрами, используется для работы с реестром.",
+    "RegSetKeySecurity": "Устанавливает безопасность ключа реестра, применяется для работы с реестром.",
+    "RegUnLoadKeyA": "Выгружает ключ реестра, используется для работы с реестром.",
+    "RegConnectRegistryA": "Подключается к удалённому реестру, применяется для работы с реестром.",
+    "RegCopyTreeA": "Копирует дерево реестра, используется для работы с реестром.",
+    "RegCreateKeyTransactedA": "Создаёт ключ реестра с транзакцией, применяется для работы с реестром.",
+    "RegDeleteKeyA": "Удаляет ключ реестра, используется для сокрытия следов.",
+    "RegDeleteKeyExA": "Удаляет ключ реестра с расширенными параметрами, применяется для сокрытия следов.",
+    "RegDeleteKeyTransactedA": "Удаляет ключ реестра с транзакцией, используется для сокрытия следов.",
+    "RegDeleteKeyValueA": "Удаляет значение ключа реестра, применяется для сокрытия следов.",
+    "RegDeleteTreeA": "Удаляет дерево реестра, используется для сокрытия следов.",
+    "NtClose": "Закрывает объект (NT), применяется для управления объектами.",
+    "NtDeleteKey": "Удаляет ключ реестра (NT), используется для сокрытия следов.",
+    "NtDeleteValueKey": "Удаляет значение ключа реестра (NT), применяется для сокрытия следов.",
+    "NtSetValueKey": "Устанавливает значение ключа реестра (NT), используется для персистентности.",
+    "RtlSetProcessIsCritical": "Устанавливает процесс как критический (RTL), может использоваться для персистентности.",
+    "SetWindowLongA": "Устанавливает атрибуты окна, применяется для управления окнами.",
+    "SetWindowLongPtrA": "Устанавливает атрибуты окна (указатель), используется для управления окнами.",
+    "CallWindowProcA": "Вызывает оконную процедуру, применяется для управления окнами.",
+    "SetClipboardData": "Устанавливает данные в буфер обмена, может использоваться для управления буфером.",
+    "OpenClipboard": "Открывает буфер обмена, применяется для управления буфером обмена."
+}
+
+# Описание категорий (для дополнительной информации)
+category_descriptions = {
+    "Ransomware": "Функции, связанные с шифрованием данных и вымогательством (например, CryptEncrypt).",
+    "Injection": "Функции для внедрения кода в другие процессы (например, VirtualAlloc, OpenProcess).",
+    "Anti-Debugging": "Техники, затрудняющие отладку (например, Sleep, IsDebuggerPresent).",
+    "Evasion": "Методы уклонения от обнаружения (например, SetFileAttributesA, CreateWindowExA).",
+    "Internet": "Сетевые функции для связи с C2-сервером (например, ShellExecuteA, WinExec).",
+    "Spying": "Шпионские функции, такие как захват экрана или кейлоггинг (например, BitBlt, GetKeyState).",
+    "Enumeration": "Сбор информации о системе (например, GetComputerNameA, FindFirstFileA).",
+    "Helper": "Общие вспомогательные функции (например, работа с файлами, реестром, сервисами)."
+}
+
+# Подсчитываем общее количество уникальных API в базе MalAPI.io
+all_malapi_apis = set()
+for api_list in malapi_categories.values():
+    all_malapi_apis.update(api_list)
+total_malapi_count = len(all_malapi_apis)
+
+# Извлекаем список импортов из Malcat
+symbols = analysis.syms
+import_list = []
+for sym in symbols:
+        name = sym.name if sym.name else "Без имени"
+        import_list.append(name)
+
+# Сортируем импорты по имени
+import_list.sort(key=lambda x: x.lower())
+
+# Выводим список импортов и сохраняем в файл
+print("\n\n### Выгрузка списка импортов ###")
+print(f"\nВсего импортов: {len(import_list)}")
+print("\nСписок импортов:")
+for imp in import_list:
+    print(imp)
+
+with open(imports_file, "w", encoding="utf-8") as f:
+    f.write("### Список импортов ###\n\n")
+    f.write(f"Всего импортов: {len(import_list)}\n\n")
+    for imp in import_list:
+        f.write(f"{imp}\n")
+
+print(f"\nСписок импортов сохранён в файл: {imports_file}")
+
+# Сравнение с MalAPI.io
+suspicious_api = {}  # Словарь для хранения совпадающих API и их категорий
+category_counts = {}  # Словарь для подсчёта совпадений по категориям
+
+# Проходим по каждому импорту из Malcat
+for api in import_list:
+    # Извлекаем имя функции без префикса (например, "Falimotin.Class7_GlobalOptions.get_FakeMessageBody" -> "FakeMessageBody")
+    api_name = api.split(".")[-1]  # Берем последнюю часть после точки
+    # Убираем префикс "get_" и приводим к нижнему регистру для сравнения
+    api_name_cleaned = re.sub(r'^(get_)?', '', api_name, flags=re.IGNORECASE).lower()
+    
+    # Проверяем, есть ли API в категориях MalAPI.io
+    for category, api_list in malapi_categories.items():
+        for malapi_func in api_list:
+            # Приводим имя функции из MalAPI.io к нижнему регистру и убираем "get_"
+            malapi_func_cleaned = re.sub(r'^(get_)?', '', malapi_func, flags=re.IGNORECASE).lower()
+            if api_name_cleaned == malapi_func_cleaned:
+                if api not in suspicious_api:
+                    suspicious_api[api] = []
+                suspicious_api[api].append(category)
+                
+                # Увеличиваем счётчик для категории
+                if category not in category_counts:
+                    category_counts[category] = 0
+                category_counts[category] += 1
+
+# Убираем дубликаты в категориях для каждой функции
+for api in suspicious_api:
+    suspicious_api[api] = list(set(suspicious_api[api]))
+
+# Формируем вывод
+output = []
+output.append("=====================================")
+output.append("       Анализ API Вредоносного ПО    ")
+output.append("=====================================")
+output.append(f"Общее количество уникальных API в базе MalAPI.io: {total_malapi_count}")
+output.append("=====================================\n")
+
+# Описание категорий
+output.append("Описание категорий MalAPI.io:")
+for category, desc in category_descriptions.items():
+    output.append(f"- {category}: {desc}")
+output.append("=====================================\n")
+
+# Результаты анализа
+output.append("Результаты анализа:\n")
+
+# 1. В каких классах (категориях) были совпадения
+output.append("Категории с совпадениями:")
+if category_counts:
+    for category, count in category_counts.items():
+        output.append(f"- {category}: {count} совпадений")
+else:
+    output.append("Совпадений не найдено.")
+output.append("")
+
+# 2. Общее количество совпадающих функций
+output.append(f"Общее количество совпадающих функций: {len(suspicious_api)}")
+# Процент совпадений
+match_percentage = (len(suspicious_api) / len(import_list)) * 100 if import_list else 0
+output.append(f"Процент совпадающих API: {match_percentage:.2f}%")
+output.append("")
+
+# 3. Список совпадающих функций с их категориями и описаниями
+output.append("Совпадающие функции:")
+if suspicious_api:
+    for api, categories in suspicious_api.items():
+        api_name = api.split(".")[-1]  # Извлекаем имя функции без префикса
+        description = malapi_descriptions.get(api_name, "Описание отсутствует.")
+        output.append(f"- {api}: {', '.join(categories)}")
+        output.append(f"  Описание: {description}")
+else:
+    output.append("Нет совпадающих функций.")
+output.append("")
+
+# 4. Общее количество проверенных API
+output.append(f"Всего проверено API: {len(import_list)}\n")
+output.append(f"Дата и время анализа: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+# Вывод в консоль
+for line in output:
+    print(line)
+
+# Сохранение в файл
+with open(analysis_file, "w", encoding="utf-8") as f:
+    for line in output:
+        f.write(line + "\n")
+
+print(f"\nРезультаты анализа сохранены в файл: {analysis_file}")
